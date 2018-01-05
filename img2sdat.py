@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-#====================================================
+# ====================================================
 #          FILE: img2sdat.py
 #       AUTHORS: xpirt - luxi78 - howellzhu
 #          DATE: 2017-10-18 16:19:51 CEST
-#====================================================
+# ====================================================
 
 from __future__ import print_function
 
@@ -16,8 +16,9 @@ __version__ = '1.5'
 if sys.hexversion < 0x02070000:
     print >> sys.stderr, "Python 2.7 or newer is required."
     try:
-       input = raw_input
-    except NameError: pass
+        input = raw_input
+    except NameError:
+        pass
     input('Press ENTER to exit...')
     sys.exit(1)
 else:
@@ -32,10 +33,12 @@ except IndexError:
     print('    [version]: transfer list version number, will be asked by default - more info on xda thread)\n')
     print('Visit xda thread for more information.\n')
     try:
-       input = raw_input
-    except NameError: pass
+        input = raw_input
+    except NameError:
+        pass
     input('Press ENTER to exit...')
     sys.exit()
+
 
 def main(argv):
     global input
@@ -56,7 +59,8 @@ def main(argv):
             ''')
             try:
                 input = raw_input
-            except NameError: pass
+            except NameError:
+                pass
             item = input('Choose system version: ')
             if item == '1':
                 version = 1
@@ -84,6 +88,7 @@ def main(argv):
 
     print('Done! Output files: %s' % os.path.dirname(outdir))
     return
+
 
 if __name__ == '__main__':
     main(sys.argv)
