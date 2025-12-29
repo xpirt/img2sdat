@@ -18,7 +18,7 @@ import copy
 import errno
 import getopt
 import getpass
-import imp
+import importlib.util
 import os
 import platform
 import re
@@ -1120,16 +1120,19 @@ class DeviceSpecificParams(object):
         return
       try:
         if os.path.isdir(path):
-          info = imp.find_module("releasetools", [path])
-        else:
-          d, f = os.path.split(path)
-          b, x = os.path.splitext(f)
-          if x == ".py":
-            f = b
-          info = imp.find_module(f, [d])
+          path = os.path.join(path, "releasetools")
+          if os.path.isdir(path):
+            path = os.path.join(path, "__init__.py")
+        if not os.path.exists(path) and os.path.exists(path + ".py"):
+          path = path + ".py"
+        spec = importlib.util.spec_from_file_location("device_specific", path)
+        if not spec:
+          raise FileNotFoundError(path)
         print("loaded device-specific extensions from", path)
-        self.module = imp.load_module("device_specific", *info)
-      except ImportError:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.module = module
+      except (ImportError, FileNotFoundError):
         print("unable to load device-specific module; assuming none")
 
   def _DoCall(self, function_name, *args, **kwargs):
@@ -1530,9 +1533,34 @@ class BlockDifference(object):
     ZipWrite(output_zip,
              '{}.transfer.list'.format(self.path),
              '{}.transfer.list'.format(self.partition))
-    ZipWrite(output_zip,
-             '{}.new.dat'.format(self.path),
-             '{}.new.dat'.format(self.partition))
+
+    # For full OTA, compress the new.dat with brotli with quality 6 to reduce its size. Quailty 9
+    # almost triples the compression time but doesn't further reduce the size too much.
+    # For a typical 1.8G system.new.dat
+    #                       zip  | brotli(quality 6)  | brotli(quality 9)
+    #   compressed_size:    942M | 869M (~8% reduced) | 854M
+    #   compression_time:   75s  | 265s               | 719s
+    #   decompression_time: 15s  | 25s                | 25s
+
+    if not self.src:
+      bro_cmd = ['bro', '--quality', '6',
+                 '--input', '{}.new.dat'.format(self.path),
+                 '--output', '{}.new.dat.br'.format(self.path)]
+      print("Compressing {}.new.dat with brotli".format(self.partition))
+      p = Run(bro_cmd, stdout=subprocess.PIPE)
+      p.communicate()
+      assert p.returncode == 0,\
+          'compression of {}.new.dat failed'.format(self.partition)
+
+      new_data_name = '{}.new.dat.br'.format(self.partition)
+      ZipWrite(output_zip,
+               '{}.new.dat.br'.format(self.path),
+               new_data_name,
+               compress_type=zipfile.ZIP_STORED)
+    else:
+      new_data_name = '{}.new.dat'.format(self.partition)
+      ZipWrite(output_zip, '{}.new.dat'.format(self.path), new_data_name)
+
     ZipWrite(output_zip,
              '{}.patch.dat'.format(self.path),
              '{}.patch.dat'.format(self.partition),
@@ -1545,9 +1573,10 @@ class BlockDifference(object):
 
     call = ('block_image_update("{device}", '
             'package_extract_file("{partition}.transfer.list"), '
-            '"{partition}.new.dat", "{partition}.patch.dat") ||\n'
+            '"{new_data_name}", "{partition}.patch.dat") ||\n'
             '  abort("E{code}: Failed to update {partition} image.");'.format(
-                device=self.device, partition=self.partition, code=code))
+                device=self.device, partition=self.partition,
+                new_data_name=new_data_name, code=code))
     script.AppendExtra(script.WordWrap(call))
 
   def _HashBlocks(self, source, ranges): # pylint: disable=no-self-use

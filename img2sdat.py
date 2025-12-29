@@ -9,9 +9,10 @@
 from __future__ import print_function
 
 import sys, os, errno, tempfile
+import brotli
 import common, blockimgdiff, sparse_img
 
-def main(INPUT_IMAGE, OUTDIR='.', VERSION=None, PREFIX='system'):
+def main(INPUT_IMAGE, OUTDIR='.', VERSION=None, PREFIX='system', BROTLI=False):
     global input
 
     __version__ = '1.7'
@@ -65,6 +66,16 @@ def main(INPUT_IMAGE, OUTDIR='.', VERSION=None, PREFIX='system'):
     b = blockimgdiff.BlockImageDiff(image, None, VERSION)
     b.Compute(OUTDIR)
 
+    # Generate brotli compressed output files
+    if BROTLI:
+        print("Compressing {}.new.dat with brotli".format(PREFIX))
+        with open('{}.new.dat'.format(PREFIX), 'rb') as infile:
+            data = infile.read()
+        outfile = open('{}.new.dat.br'.format(PREFIX), 'wb')
+        data = brotli.compress(data, mode=brotli.MODE_GENERIC,
+                            quality=6, lgwin=22, lgblock=0)
+        outfile.write(data)
+
     print('Done! Output files: %s' % os.path.dirname(OUTDIR))
     return
 
@@ -76,6 +87,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--outdir', help='output directory (current directory by default)')
     parser.add_argument('-v', '--version', help='transfer list version number, will be asked by default - more info on xda thread)')
     parser.add_argument('-p', '--prefix', help='name of image (prefix.new.dat)')
+    parser.add_argument('--brotli', action='store_true', help='generate compressed brotli output')
 
     args = parser.parse_args()
 
@@ -95,5 +107,7 @@ if __name__ == '__main__':
         PREFIX = args.prefix
     else:
         PREFIX = 'system'
+
+    BROTLI = args.brotli
     
-    main(INPUT_IMAGE, OUTDIR, VERSION, PREFIX)
+    main(INPUT_IMAGE, OUTDIR, VERSION, PREFIX, BROTLI)
